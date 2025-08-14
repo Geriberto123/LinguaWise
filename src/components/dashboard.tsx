@@ -1,3 +1,4 @@
+
 "use client"
 
 import {
@@ -11,6 +12,7 @@ import {
   BarChart,
   Trash2,
   Pencil,
+  Save,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +23,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from "@/components/ui/card"
 import {
   DropdownMenu,
@@ -55,6 +58,10 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { mockHistory, mockDictionary, mockLanguages, mockTones } from "@/lib/data"
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from "recharts"
+import React from "react"
+import { useToast } from "@/hooks/use-toast"
+import { AddTermDialog } from "./add-term-dialog"
+import { ClearHistoryDialog } from "./clear-history-dialog"
 
 export function Dashboard() {
   return (
@@ -183,21 +190,40 @@ function StatisticsTab() {
 
 
 function HistoryTab() {
+    const [history, setHistory] = React.useState(mockHistory);
+    const [searchTerm, setSearchTerm] = React.useState("");
+    const { toast } = useToast();
+
+    const handleClearHistory = () => {
+        setHistory([]);
+        toast({ title: "Success", description: "Translation history has been cleared." });
+    };
+
+    const filteredHistory = history.filter(item =>
+        item.originalText.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.translatedText.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <Card>
             <CardHeader>
-            <CardTitle>Translation History</CardTitle>
-            <CardDescription>
-                Review and manage your past translations.
-            </CardDescription>
+                <CardTitle>Translation History</CardTitle>
+                <CardDescription>
+                    Review and manage your past translations.
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex items-center justify-between gap-4 mb-4">
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search history..." className="pl-10" />
+                        <Input
+                            placeholder="Search history..."
+                            className="pl-10"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
                     </div>
-                     <Button variant="outline">Clear History</Button>
+                     <ClearHistoryDialog onConfirm={handleClearHistory} />
                 </div>
                 <Table>
                     <TableHeader>
@@ -212,7 +238,7 @@ function HistoryTab() {
                     </TableRow>
                     </TableHeader>
                     <TableBody>
-                    {mockHistory.map((item) => (
+                    {filteredHistory.map((item) => (
                         <TableRow key={item.id}>
                             <TableCell className="font-medium max-w-xs truncate">{item.originalText}</TableCell>
                             <TableCell className="max-w-xs truncate">{item.translatedText}</TableCell>
@@ -245,23 +271,40 @@ function HistoryTab() {
 }
 
 function DictionaryTab() {
+    const [dictionary, setDictionary] = React.useState(mockDictionary);
+    const [searchTerm, setSearchTerm] = React.useState("");
+    const { toast } = useToast();
+
+    const handleAddTerm = (newTerm: any) => {
+        setDictionary(prev => [newTerm, ...prev]);
+        toast({ title: "Success", description: `Term "${newTerm.term}" has been added.` });
+    };
+
+    const filteredDictionary = dictionary.filter(item =>
+        item.term.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.translation.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <Card>
             <CardHeader>
-            <CardTitle>Custom Dictionary</CardTitle>
-            <CardDescription>
-                Manage your personal dictionary of terms and translations.
-            </CardDescription>
+                <CardTitle>Custom Dictionary</CardTitle>
+                <CardDescription>
+                    Manage your personal dictionary of terms and translations.
+                </CardDescription>
             </CardHeader>
             <CardContent>
                  <div className="flex items-center justify-between gap-4 mb-4">
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search dictionary..." className="pl-10" />
+                        <Input
+                            placeholder="Search dictionary..."
+                            className="pl-10"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
                     </div>
-                     <Button>
-                        <PlusCircle className="mr-2 h-4 w-4" /> Add Term
-                    </Button>
+                     <AddTermDialog onAddTerm={handleAddTerm} />
                 </div>
                 <Table>
                     <TableHeader>
@@ -276,7 +319,7 @@ function DictionaryTab() {
                     </TableRow>
                     </TableHeader>
                     <TableBody>
-                    {mockDictionary.map((item) => (
+                    {filteredDictionary.map((item) => (
                         <TableRow key={item.term}>
                             <TableCell className="font-medium">{item.term}</TableCell>
                             <TableCell>{item.translation}</TableCell>
@@ -309,6 +352,25 @@ function DictionaryTab() {
 }
 
 function SettingsTab() {
+    const { toast } = useToast();
+    const [nativeLanguage, setNativeLanguage] = React.useState("en");
+    const [defaultTargetLanguage, setDefaultTargetLanguage] = React.useState("es");
+    const [defaultTone, setDefaultTone] = React.useState("formal");
+    const [saveHistory, setSaveHistory] = React.useState(true);
+    const [isSaving, setIsSaving] = React.useState(false);
+
+    const handleSave = () => {
+        setIsSaving(true);
+        // Simulate API call
+        setTimeout(() => {
+            setIsSaving(false);
+            toast({
+                title: "Preferences Saved",
+                description: "Your settings have been updated successfully.",
+            });
+        }, 1000);
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -323,8 +385,8 @@ function SettingsTab() {
                     <div className="grid md:grid-cols-2 gap-4">
                         <div className="grid gap-2">
                             <Label htmlFor="native-language">Native Language</Label>
-                             <Select defaultValue="en">
-                                <SelectTrigger>
+                             <Select value={nativeLanguage} onValueChange={setNativeLanguage}>
+                                <SelectTrigger id="native-language">
                                     <SelectValue placeholder="Select your native language" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -334,8 +396,8 @@ function SettingsTab() {
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="default-target-language">Default Target Language</Label>
-                            <Select defaultValue="es">
-                                <SelectTrigger>
+                            <Select value={defaultTargetLanguage} onValueChange={setDefaultTargetLanguage}>
+                                <SelectTrigger id="default-target-language">
                                     <SelectValue placeholder="Select a default target" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -351,8 +413,8 @@ function SettingsTab() {
                     <div className="grid md:grid-cols-2 gap-4">
                         <div className="grid gap-2">
                             <Label htmlFor="tone-preference">Default Tone Preference</Label>
-                            <Select defaultValue="formal">
-                                <SelectTrigger>
+                            <Select value={defaultTone} onValueChange={setDefaultTone}>
+                                <SelectTrigger id="tone-preference">
                                     <SelectValue placeholder="Select a default tone" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -361,15 +423,20 @@ function SettingsTab() {
                             </Select>
                         </div>
                          <div className="flex items-center space-x-2 pt-6">
-                            <Switch id="save-history" defaultChecked />
+                            <Switch id="save-history" checked={saveHistory} onCheckedChange={setSaveHistory} />
                             <Label htmlFor="save-history">Save translation history</Label>
                         </div>
                     </div>
                 </div>
-                 <div className="flex justify-end">
-                    <Button>Save Preferences</Button>
-                </div>
             </CardContent>
+            <CardFooter className="border-t px-6 py-4">
+                 <div className="flex justify-end w-full">
+                    <Button onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? 'Saving...' : 'Save Preferences'}
+                    </Button>
+                </div>
+            </CardFooter>
         </Card>
     )
 }
+
