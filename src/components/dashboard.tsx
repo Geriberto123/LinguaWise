@@ -56,7 +56,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { mockLanguages, mockTones } from "@/lib/data"
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from "recharts"
-import React, { useEffect } from "react"
+import React, { useEffect, useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { AddTermDialog } from "./add-term-dialog"
 import { ClearHistoryDialog } from "./clear-history-dialog"
@@ -66,12 +66,23 @@ export function Dashboard() {
   const searchParams = useSearchParams()
   const tab = searchParams.get('tab')
   const [activeTab, setActiveTab] = React.useState(tab || "statistics");
+  const [isClient, setIsClient] = useState(false)
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
 
   useEffect(() => {
     if (tab) {
       setActiveTab(tab);
     }
   }, [tab]);
+
+
+  if (!isClient) {
+      return null;
+  }
 
 
   return (
@@ -500,5 +511,3 @@ function SettingsTab() {
         </Card>
     )
 }
-
-    
