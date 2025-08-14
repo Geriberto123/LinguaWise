@@ -11,6 +11,7 @@ import {
   BarChart,
   Pencil,
 } from "lucide-react"
+import { useSearchParams } from 'next/navigation'
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -62,8 +63,19 @@ import { ClearHistoryDialog } from "./clear-history-dialog"
 import type { TranslationHistoryItem, DictionaryEntry } from "@/lib/types";
 
 export function Dashboard() {
+  const searchParams = useSearchParams()
+  const tab = searchParams.get('tab')
+  const [activeTab, setActiveTab] = React.useState(tab || "statistics");
+
+  useEffect(() => {
+    if (tab) {
+      setActiveTab(tab);
+    }
+  }, [tab]);
+
+
   return (
-    <Tabs defaultValue="statistics">
+    <Tabs value={activeTab} onValueChange={setActiveTab}>
       <div className="flex items-center">
         <TabsList>
           <TabsTrigger value="statistics"><BarChart className="mr-2 h-4 w-4" />Statistics</TabsTrigger>
@@ -247,7 +259,7 @@ function HistoryTab() {
     const filteredHistory = history.filter(item =>
         item.originalText.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.translatedText.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     return (
         <Card>
