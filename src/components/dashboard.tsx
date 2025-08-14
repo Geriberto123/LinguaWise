@@ -143,7 +143,7 @@ function useUserDocs<T extends { id?: string }>(collectionName: string, initialV
         } finally {
             setLoading(false);
         }
-    }, [user, collectionName, initialValue]);
+    }, [user, collectionName]);
 
     useEffect(() => {
         fetchData();
@@ -634,5 +634,3 @@ function SettingsTab() {
         </Card>
     )
 }
-
-    
