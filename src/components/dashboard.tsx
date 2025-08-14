@@ -10,6 +10,7 @@ import {
   Settings,
   BarChart,
   Pencil,
+  Trash2,
 } from "lucide-react"
 import { useSearchParams } from 'next/navigation'
 
@@ -56,13 +57,13 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { mockLanguages, mockTones } from "@/lib/data"
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from "recharts"
-import React, { useEffect, useState, useCallback } from "react"
+import React, { useEffect, useState, useCallback, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { AddTermDialog } from "./add-term-dialog"
 import { ClearHistoryDialog } from "./clear-history-dialog"
-import type { TranslationHistoryItem, DictionaryEntry } from "@/lib/types";
+import type { TranslationHistoryItem, DictionaryEntry, UserSettings } from "@/lib/types";
 import { useAuth } from "@/hooks/use-auth"
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, writeBatch, deleteDoc, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 
@@ -143,49 +144,53 @@ function useUserDocs<T extends { id?: string }>(collectionName: string, initialV
         } finally {
             setLoading(false);
         }
-    }, [user, collectionName]);
+    }, [user, collectionName, initialValue]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
     
-    return [data, setData, loading, fetchData] as const;
+    return { data, setData, loading, refetch: fetchData };
 }
 
 
 function StatisticsTab() {
-  const [history, , loadingHistory] = useUserDocs<TranslationHistoryItem>("translationHistory", []);
-  const [dictionary, , loadingDictionary] = useUserDocs<DictionaryEntry>("dictionary", []);
+  const { data: history, loading: loadingHistory } = useUserDocs<TranslationHistoryItem>("translationHistory", []);
+  const { data: dictionary, loading: loadingDictionary } = useUserDocs<DictionaryEntry>("dictionary", []);
+  
+  const stats = useMemo(() => {
+    const wordsTranslated = history.reduce((acc, item) => acc + (item.originalText?.split(' ').length || 0), 0);
+    
+    const languageCounts = history.reduce((acc, item) => {
+      const langLabel = mockLanguages.find(l => l.value === item.targetLang)?.label || item.targetLang;
+      acc[langLabel] = (acc[langLabel] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const favoriteLanguageLabel = Object.entries(languageCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+
+    const langData = Object.entries(languageCounts).map(([name, count]) => ({
+        name,
+        count
+    })).sort((a,b) => b.count - a.count).slice(0, 5);
+
+
+    const usageData = history.reduce((acc, item) => {
+        if (!item.timestamp) return acc;
+        const month = new Date(item.timestamp).toLocaleString('default', { month: 'short' });
+        const existingMonth = acc.find(d => d.name === month);
+        if (existingMonth) {
+            existingMonth.words += item.originalText?.split(' ').length || 0;
+        } else {
+            acc.push({ name: month, words: item.originalText?.split(' ').length || 0 });
+        }
+        return acc;
+    }, [] as { name: string; words: number }[]).reverse();
+
+    return { wordsTranslated, favoriteLanguageLabel, langData, usageData };
+  }, [history]);
   
   if (loadingHistory || loadingDictionary) return <div>Loading statistics...</div>
-
-  const wordsTranslated = history.reduce((acc, item) => acc + item.originalText.split(' ').length, 0);
-  
-  const languageCounts = history.reduce((acc, item) => {
-    const langLabel = mockLanguages.find(l => l.value === item.targetLang)?.label || item.targetLang;
-    acc[langLabel] = (acc[langLabel] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const favoriteLanguageLabel = Object.entries(languageCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
-
-  const langData = Object.entries(languageCounts).map(([name, count]) => ({
-      name,
-      count
-  })).sort((a,b) => b.count - a.count).slice(0, 5);
-
-
-  const usageData = history.reduce((acc, item) => {
-    const month = new Date(item.timestamp).toLocaleString('default', { month: 'short' });
-    const existingMonth = acc.find(d => d.name === month);
-    if (existingMonth) {
-      existingMonth.words += item.originalText.split(' ').length;
-    } else {
-      acc.push({ name: month, words: item.originalText.split(' ').length });
-    }
-    return acc;
-  }, [] as { name: string; words: number }[]).reverse();
-
 
   return (
     <Card>
@@ -213,7 +218,7 @@ function StatisticsTab() {
                     <Pencil className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{wordsTranslated}</div>
+                    <div className="text-2xl font-bold">{stats.wordsTranslated}</div>
                     <p className="text-xs text-muted-foreground">Total words processed</p>
                 </CardContent>
             </Card>
@@ -223,7 +228,7 @@ function StatisticsTab() {
                     <History className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{favoriteLanguageLabel}</div>
+                    <div className="text-2xl font-bold">{stats.favoriteLanguageLabel}</div>
                     <p className="text-xs text-muted-foreground">Most frequently used</p>
                 </CardContent>
             </Card>
@@ -242,7 +247,7 @@ function StatisticsTab() {
             <div>
                 <h3 className="text-lg font-semibold mb-2">Words Translated Per Month</h3>
                 <ResponsiveContainer width="100%" height={300}>
-                    <RechartsBarChart data={usageData}>
+                    <RechartsBarChart data={stats.usageData}>
                         <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false}/>
                         <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
                         <Tooltip cursor={{fill: 'hsl(var(--muted))'}} contentStyle={{backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))'}}/>
@@ -254,7 +259,7 @@ function StatisticsTab() {
             <div>
                 <h3 className="text-lg font-semibold mb-2">Top Languages</h3>
                 <ResponsiveContainer width="100%" height={300}>
-                     <RechartsBarChart data={langData} layout="vertical">
+                     <RechartsBarChart data={stats.langData} layout="vertical">
                         <XAxis type="number" hide />
                         <YAxis dataKey="name" type="category" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} width={80} />
                         <Tooltip cursor={{fill: 'hsl(var(--muted))'}} contentStyle={{backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))'}}/>
@@ -271,7 +276,7 @@ function StatisticsTab() {
 
 
 function HistoryTab() {
-    const [history, setHistory, loadingHistory, refetchHistory] = useUserDocs<TranslationHistoryItem>("translationHistory", []);
+    const { data: history, setData: setHistory, loading: loadingHistory, refetch: refetchHistory } = useUserDocs<TranslationHistoryItem>("translationHistory", []);
     const [searchTerm, setSearchTerm] = React.useState("");
     const { toast } = useToast();
     const { user } = useAuth();
@@ -298,7 +303,7 @@ function HistoryTab() {
         if (!user || !id) return;
         try {
             await deleteDoc(doc(db, "translationHistory", id));
-            await refetchHistory();
+            setHistory(prev => prev.filter(item => item.id !== id));
             toast({ title: "Success", description: "Translation entry has been deleted." });
         } catch (error) {
              console.error("Error deleting item:", error);
@@ -307,8 +312,8 @@ function HistoryTab() {
     };
 
     const filteredHistory = history.filter(item =>
-        item.originalText.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.translatedText.toLowerCase().includes(searchTerm.toLowerCase())
+        item.originalText?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.translatedText?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -355,7 +360,7 @@ function HistoryTab() {
                                 <TableCell>
                                     <Badge variant="outline">{mockLanguages.find(l => l.value === item.sourceLang)?.label}</Badge> → <Badge variant="outline">{mockLanguages.find(l => l.value === item.targetLang)?.label}</Badge>
                                 </TableCell>
-                                <TableCell className="hidden md:table-cell">{new Date(item.timestamp).toLocaleDateString()}</TableCell>
+                                <TableCell className="hidden md:table-cell">{item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'N/A'}</TableCell>
                                 <TableCell>
                                     <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
@@ -366,7 +371,10 @@ function HistoryTab() {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                        <DropdownMenuItem onClick={() => handleDeleteItem(item.id!)} className="text-destructive">Delete</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => item.id && handleDeleteItem(item.id)} className="text-destructive">
+                                          <Trash2 className="mr-2 h-4 w-4" />
+                                          Delete
+                                        </DropdownMenuItem>
                                     </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -383,7 +391,7 @@ function HistoryTab() {
 }
 
 function DictionaryTab() {
-    const [dictionary, setDictionary, loadingDictionary, refetchDictionary] = useUserDocs<DictionaryEntry>("dictionary", []);
+    const { data: dictionary, setData: setDictionary, loading: loadingDictionary, refetch: refetchDictionary } = useUserDocs<DictionaryEntry>("dictionary", []);
     const [searchTerm, setSearchTerm] = React.useState("");
     const { toast } = useToast();
     const { user } = useAuth();
@@ -391,23 +399,9 @@ function DictionaryTab() {
     const handleAddTerm = async (newTerm: Omit<DictionaryEntry, 'userId' | 'id'>) => {
         if (!user) return;
         try {
-            // Use a combination of userId and term to create a unique, predictable ID.
-            const docId = `${user.uid}_${newTerm.term.toLowerCase().replace(/\s+/g, '_')}`;
-            const docRef = doc(db, "dictionary", docId);
-
-            // Check if term already exists to prevent overwriting without explicit action
-            const docSnap = await getDoc(docRef);
-            if(docSnap.exists()){
-                toast({ title: "Term exists", description: `The term "${newTerm.term}" is already in your dictionary.`, variant: "destructive" });
-                return;
-            }
-
             const termWithUser: Omit<DictionaryEntry, 'id'> = { ...newTerm, userId: user.uid };
-            await setDoc(docRef, termWithUser);
-
-            // Manually add the new term to the local state to avoid a full refetch
-            setDictionary(prev => [{...termWithUser, id: docId}, ...prev]);
-
+            const docRef = await addDoc(collection(db, "dictionary"), termWithUser);
+            setDictionary(prev => [{ ...termWithUser, id: docRef.id }, ...prev]);
             toast({ title: "Success", description: `Term "${newTerm.term}" has been added.` });
         } catch (error) {
             console.error("Error adding term:", error);
@@ -419,7 +413,6 @@ function DictionaryTab() {
         if (!user || !id) return;
         try {
             await deleteDoc(doc(db, "dictionary", id));
-            // Manually remove from local state
             setDictionary(prev => prev.filter(item => item.id !== id));
             toast({ title: "Success", description: `Term has been deleted.` });
         } catch (error) {
@@ -488,7 +481,10 @@ function DictionaryTab() {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                        <DropdownMenuItem onClick={() => handleDeleteTerm(item.id!)} className="text-destructive">Delete</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => item.id && handleDeleteTerm(item.id)} className="text-destructive">
+                                          <Trash2 className="mr-2 h-4 w-4" />
+                                          Delete
+                                        </DropdownMenuItem>
                                     </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -508,12 +504,13 @@ function SettingsTab() {
     const { toast } = useToast();
     const { user } = useAuth();
     
-    const [nativeLanguage, setNativeLanguage] = useState("en");
-    const [defaultTargetLanguage, setDefaultTargetLanguage] = useState("es");
-    const [defaultTone, setDefaultTone] = useState("formal");
-    const [saveHistory, setSaveHistory] = useState(true);
+    const [settings, setSettings] = useState<Partial<UserSettings>>({});
     const [isSaving, setIsSaving] = useState(false);
     const [loading, setLoading] = useState(true);
+
+    const handleSettingChange = (key: keyof UserSettings, value: any) => {
+        setSettings(prev => ({...prev, [key]: value}));
+    }
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -523,11 +520,15 @@ function SettingsTab() {
                 const docRef = doc(db, "userSettings", user.uid);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    const settings = docSnap.data();
-                    setNativeLanguage(settings.nativeLanguage || "en");
-                    setDefaultTargetLanguage(settings.defaultTargetLanguage || "es");
-                    setDefaultTone(settings.defaultTone || "formal");
-                    setSaveHistory(settings.saveHistory === false ? false : true);
+                    setSettings(docSnap.data() as UserSettings);
+                } else {
+                    // Set default settings if none exist
+                    setSettings({
+                        nativeLanguage: "en",
+                        defaultTargetLanguage: "es",
+                        defaultTone: "formal",
+                        saveHistory: true,
+                    });
                 }
             } catch (error) {
                 console.error("Error fetching settings:", error);
@@ -545,13 +546,7 @@ function SettingsTab() {
         if (!user) return;
         setIsSaving(true);
         try {
-            const settingsData = {
-                nativeLanguage,
-                defaultTargetLanguage,
-                defaultTone,
-                saveHistory
-            };
-            await setDoc(doc(db, "userSettings", user.uid), settingsData, { merge: true });
+            await setDoc(doc(db, "userSettings", user.uid), settings, { merge: true });
             toast({
                 title: "Preferences Saved",
                 description: "Your settings have been updated successfully.",
@@ -580,7 +575,7 @@ function SettingsTab() {
                     <div className="grid md:grid-cols-2 gap-4">
                         <div className="grid gap-2">
                             <Label htmlFor="native-language">Native Language</Label>
-                             <Select value={nativeLanguage} onValueChange={setNativeLanguage}>
+                             <Select value={settings.nativeLanguage} onValueChange={(value) => handleSettingChange('nativeLanguage', value)}>
                                 <SelectTrigger id="native-language">
                                     <SelectValue placeholder="Select your native language" />
                                 </SelectTrigger>
@@ -591,7 +586,7 @@ function SettingsTab() {
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="default-target-language">Default Target Language</Label>
-                            <Select value={defaultTargetLanguage} onValueChange={setDefaultTargetLanguage}>
+                            <Select value={settings.defaultTargetLanguage} onValueChange={(value) => handleSettingChange('defaultTargetLanguage', value)}>
                                 <SelectTrigger id="default-target-language">
                                     <SelectValue placeholder="Select a default target" />
                                 </SelectTrigger>
@@ -608,7 +603,7 @@ function SettingsTab() {
                     <div className="grid md:grid-cols-2 gap-4">
                         <div className="grid gap-2">
                             <Label htmlFor="tone-preference">Default Tone Preference</Label>
-                            <Select value={defaultTone} onValueChange={setDefaultTone}>
+                            <Select value={settings.defaultTone} onValueChange={(value) => handleSettingChange('defaultTone', value)}>
                                 <SelectTrigger id="tone-preference">
                                     <SelectValue placeholder="Select a default tone" />
                                 </SelectTrigger>
@@ -618,7 +613,7 @@ function SettingsTab() {
                             </Select>
                         </div>
                          <div className="flex items-center space-x-2 pt-6">
-                            <Switch id="save-history" checked={saveHistory} onCheckedChange={setSaveHistory} />
+                            <Switch id="save-history" checked={settings.saveHistory} onCheckedChange={(value) => handleSettingChange('saveHistory', value)} />
                             <Label htmlFor="save-history">Save translation history</Label>
                         </div>
                     </div>
