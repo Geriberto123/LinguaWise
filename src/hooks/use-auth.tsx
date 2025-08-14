@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -43,16 +44,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (email: string, password: string, displayName: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(userCredential.user, { displayName });
     
-    // Create initial user settings
+    // Create initial user settings and update profile in parallel
     const settingsRef = doc(db, "userSettings", userCredential.user.uid);
-    await setDoc(settingsRef, {
+    await Promise.all([
+      updateProfile(userCredential.user, { displayName }),
+      setDoc(settingsRef, {
         nativeLanguage: "en",
         defaultTargetLanguage: "es",
         defaultTone: "formal",
         saveHistory: true,
-    });
+      })
+    ]);
 
     return userCredential;
   };
