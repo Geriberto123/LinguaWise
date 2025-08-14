@@ -28,14 +28,40 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "./ui/button"
+import { useAuth } from "@/hooks/use-auth"
+import { Skeleton } from "./ui/skeleton"
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter();
+  const { user, loading, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+  }
 
   // Hide sidebar for auth pages
-  if (["/login", "/register", "/forgot-password"].includes(pathname)) {
-    return <>{children}</>
+  const isAuthPage = ["/login", "/register", "/forgot-password"].includes(pathname);
+
+  if (loading && !isAuthPage) {
+    return (
+       <div className="flex h-screen w-full items-center justify-center">
+        <Languages className="h-10 w-10 animate-pulse text-primary" />
+       </div>
+    );
+  }
+
+  if (isAuthPage) {
+    return <>{children}</>;
+  }
+
+  if (!user && !isAuthPage) {
+      // Redirect to login if not authenticated
+      if (typeof window !== 'undefined') {
+        router.push('/login');
+      }
+      return null;
   }
 
   return (
@@ -83,12 +109,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 className="flex h-auto w-full items-center justify-start gap-3 p-2"
               >
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src="https://placehold.co/100x100.png" alt="@user" />
-                  <AvatarFallback>U</AvatarFallback>
+                  <AvatarImage src={user?.photoURL || "https://placehold.co/100x100.png"} alt={user?.displayName || "user"} />
+                  <AvatarFallback>{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
                 </Avatar>
                 <div className="text-left">
-                  <p className="text-sm font-medium">User</p>
-                  <p className="text-xs text-muted-foreground">user@email.com</p>
+                  <p className="text-sm font-medium truncate">{user?.displayName || "User"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
                 </div>
               </Button>
             </DropdownMenuTrigger>
@@ -104,7 +130,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <span>Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push('/login')}>
+              <DropdownMenuItem onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>

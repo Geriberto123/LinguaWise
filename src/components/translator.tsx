@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition, useEffect, useCallback } from "react"
 import {
   ArrowRightLeft,
   Clipboard,
@@ -43,59 +43,56 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { translateTextAction } from "@/lib/actions"
 import type { TranslationResult, TranslationHistoryItem } from "@/lib/types"
+import { useAuth } from "@/hooks/use-auth"
+import { doc, getDoc, addDoc, collection } from "firebase/firestore"
+import { db } from "@/lib/firebase"
+
 
 const MAX_CHARACTERS = 5000;
-
-function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [state, setState] = useState<T>(() => {
-        if (typeof window === 'undefined') {
-            return defaultValue;
-        }
-        try {
-            const storedValue = window.localStorage.getItem(key);
-            return storedValue ? JSON.parse(storedValue) : defaultValue;
-        } catch (error) {
-            console.error(error);
-            return defaultValue;
-        }
-    });
-
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(key, JSON.stringify(state));
-        } catch (error) {
-            console.error(error);
-        }
-    }, [key, state]);
-
-    return [state, setState];
-}
-
 
 export default function Translator() {
   const [inputText, setInputText] = useState("")
   const [sourceLang, setSourceLang] = useState("en")
   
-  const [defaultTargetLang, setDefaultTargetLanguage] = usePersistentState("defaultTargetLanguage", "es");
-  const [defaultTone, setDefaultTone] = usePersistentState("defaultTone", "formal");
-  const [saveHistory, setSaveHistory] = usePersistentState("saveHistory", true);
-  const [, setHistory] = usePersistentState<TranslationHistoryItem[]>("translationHistory", []);
-
-  const [targetLang, setTargetLang] = useState(defaultTargetLang)
-  const [tone, setTone] = useState(defaultTone)
+  // Settings states
+  const [targetLang, setTargetLang] = useState("es")
+  const [tone, setTone] = useState("formal")
+  const [saveHistory, setSaveHistory] = useState(true)
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<TranslationResult | null>(null)
   const [copied, setCopied] = useState(false)
   const { toast } = useToast()
+  const { user } = useAuth();
 
   useEffect(() => {
-    setTargetLang(defaultTargetLang);
-  }, [defaultTargetLang]);
+    const fetchSettings = async () => {
+      if (!user) {
+        setSettingsLoading(false);
+        return
+      };
+      setSettingsLoading(true);
+      try {
+        const docRef = doc(db, "userSettings", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            const settings = docSnap.data();
+            setTargetLang(settings.defaultTargetLanguage || "es");
+            setTone(settings.defaultTone || "formal");
+            setSaveHistory(settings.saveHistory === false ? false : true);
+        }
+      } catch (error) {
+        console.error("Failed to fetch user settings", error);
+        toast({ title: "Error", description: "Could not load your preferences.", variant: "destructive" });
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
 
-  useEffect(() => {
-    setTone(defaultTone);
-  }, [defaultTone]);
+    fetchSettings();
+  }, [user, toast]);
+
 
   const handleSwapLanguages = () => {
     const tempLang = sourceLang
@@ -118,7 +115,7 @@ export default function Translator() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputText.trim()) return
+    if (!inputText.trim() || !user) return
 
     startTransition(async () => {
       const formData = new FormData()
@@ -137,9 +134,8 @@ export default function Translator() {
       } else {
         setResult(response.data);
         if (saveHistory && response.data) {
-          const newHistoryItem: TranslationHistoryItem = {
-            id: new Date().toISOString(),
-            userId: 'user_placeholder',
+          const newHistoryItem: Omit<TranslationHistoryItem, 'id'> = {
+            userId: user.uid,
             originalText: inputText,
             translatedText: response.data.translatedText,
             sourceLang,
@@ -147,13 +143,26 @@ export default function Translator() {
             tone,
             timestamp: new Date().toISOString(),
           };
-          setHistory(prev => [newHistoryItem, ...prev]);
+          try {
+            await addDoc(collection(db, "translationHistory"), newHistoryItem);
+          } catch(e) {
+            console.error("Error adding document: ", e);
+            toast({ title: "Error", description: "Could not save translation to history.", variant: "destructive" });
+          }
         }
       }
     })
   }
   
   const charCount = inputText.length;
+
+  if (settingsLoading) {
+    return (
+        <div className="flex h-full items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    )
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -343,5 +352,3 @@ export default function Translator() {
     </div>
   )
 }
-
-    

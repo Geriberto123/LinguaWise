@@ -21,7 +21,7 @@ import { mockLanguages } from '@/lib/data';
 import type { DictionaryEntry } from '@/lib/types';
 
 interface AddTermDialogProps {
-  onAddTerm: (newTerm: Omit<DictionaryEntry, 'userId'>) => void;
+  onAddTerm: (newTerm: Omit<DictionaryEntry, 'userId' | 'id'>) => void;
 }
 
 export function AddTermDialog({ onAddTerm }: AddTermDialogProps) {
@@ -30,18 +30,22 @@ export function AddTermDialog({ onAddTerm }: AddTermDialogProps) {
   const [translation, setTranslation] = useState('');
   const [context, setContext] = useState('');
   const [language, setLanguage] = useState('');
+  const [error, setError] = useState('');
 
   const handleAdd = () => {
-    if (term && translation && language) {
-      const selectedLanguage = mockLanguages.find(l => l.value === language);
-      onAddTerm({ term, translation, context, language: selectedLanguage?.label || '' });
-      setOpen(false);
-      // Reset fields
-      setTerm('');
-      setTranslation('');
-      setContext('');
-      setLanguage('');
+    if (!term.trim() || !translation.trim() || !language) {
+      setError("Term, Translation, and Language are required.");
+      return;
     }
+    setError('');
+    const selectedLanguage = mockLanguages.find(l => l.value === language);
+    onAddTerm({ term, translation, context, language: selectedLanguage?.label || '' });
+    setOpen(false);
+    // Reset fields
+    setTerm('');
+    setTranslation('');
+    setContext('');
+    setLanguage('');
   };
 
   return (
@@ -94,6 +98,7 @@ export function AddTermDialog({ onAddTerm }: AddTermDialogProps) {
             </Label>
             <Textarea id="context" value={context} onChange={(e) => setContext(e.target.value)} className="col-span-3" />
           </div>
+          {error && <p className="text-sm text-destructive text-center col-span-4">{error}</p>}
         </div>
         <DialogFooter>
           <Button type="submit" onClick={handleAdd}>Save changes</Button>
@@ -102,5 +107,3 @@ export function AddTermDialog({ onAddTerm }: AddTermDialogProps) {
     </Dialog>
   );
 }
-
-    

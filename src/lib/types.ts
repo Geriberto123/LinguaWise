@@ -5,7 +5,7 @@ export interface TranslationResult {
 }
 
 export interface TranslationHistoryItem {
-  id: string;
+  id?: string; // Firestore ID, optional before creation
   userId: string;
   originalText: string;
   translatedText: string;
@@ -16,9 +16,17 @@ export interface TranslationHistoryItem {
 }
 
 export interface DictionaryEntry {
+  id?: string; // Firestore ID, optional before creation
   userId: string;
   term: string;
   translation: string;
   context: string;
   language: string;
+}
+
+export interface UserSettings {
+    nativeLanguage: string;
+    defaultTargetLanguage: string;
+    defaultTone: string;
+    saveHistory: boolean;
 }
