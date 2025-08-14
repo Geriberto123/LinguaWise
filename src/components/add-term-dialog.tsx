@@ -18,9 +18,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlusCircle } from "lucide-react";
 import { mockLanguages } from '@/lib/data';
+import type { DictionaryEntry } from '@/lib/types';
 
 interface AddTermDialogProps {
-  onAddTerm: (newTerm: { term: string; translation: string; context: string; language: string; }) => void;
+  onAddTerm: (newTerm: Omit<DictionaryEntry, 'userId'>) => void;
 }
 
 export function AddTermDialog({ onAddTerm }: AddTermDialogProps) {
@@ -101,3 +102,5 @@ export function AddTermDialog({ onAddTerm }: AddTermDialogProps) {
     </Dialog>
   );
 }
+
+    

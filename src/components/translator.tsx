@@ -1,6 +1,7 @@
+
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import {
   ArrowRightLeft,
   Clipboard,
@@ -41,19 +42,60 @@ import {
 } from "@/components/ui/accordion"
 import { useToast } from "@/hooks/use-toast"
 import { translateTextAction } from "@/lib/actions"
-import type { TranslationResult } from "@/lib/types"
+import type { TranslationResult, TranslationHistoryItem } from "@/lib/types"
 
 const MAX_CHARACTERS = 5000;
+
+function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+    const [state, setState] = useState<T>(() => {
+        if (typeof window === 'undefined') {
+            return defaultValue;
+        }
+        try {
+            const storedValue = window.localStorage.getItem(key);
+            return storedValue ? JSON.parse(storedValue) : defaultValue;
+        } catch (error) {
+            console.error(error);
+            return defaultValue;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(key, JSON.stringify(state));
+        } catch (error) {
+            console.error(error);
+        }
+    }, [key, state]);
+
+    return [state, setState];
+}
+
 
 export default function Translator() {
   const [inputText, setInputText] = useState("")
   const [sourceLang, setSourceLang] = useState("en")
-  const [targetLang, setTargetLang] = useState("es")
-  const [tone, setTone] = useState("formal")
+  
+  const [defaultTargetLang, setDefaultTargetLanguage] = usePersistentState("defaultTargetLanguage", "es");
+  const [defaultTone, setDefaultTone] = usePersistentState("defaultTone", "formal");
+  const [saveHistory, setSaveHistory] = usePersistentState("saveHistory", true);
+  const [, setHistory] = usePersistentState<TranslationHistoryItem[]>("translationHistory", []);
+
+  const [targetLang, setTargetLang] = useState(defaultTargetLang)
+  const [tone, setTone] = useState(defaultTone)
+
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<TranslationResult | null>(null)
   const [copied, setCopied] = useState(false)
   const { toast } = useToast()
+
+  useEffect(() => {
+    setTargetLang(defaultTargetLang);
+  }, [defaultTargetLang]);
+
+  useEffect(() => {
+    setTone(defaultTone);
+  }, [defaultTone]);
 
   const handleSwapLanguages = () => {
     const tempLang = sourceLang
@@ -93,7 +135,20 @@ export default function Translator() {
           variant: "destructive",
         })
       } else {
-        setResult(response.data)
+        setResult(response.data);
+        if (saveHistory && response.data) {
+          const newHistoryItem: TranslationHistoryItem = {
+            id: new Date().toISOString(),
+            userId: 'user_placeholder',
+            originalText: inputText,
+            translatedText: response.data.translatedText,
+            sourceLang,
+            targetLang,
+            tone,
+            timestamp: new Date().toISOString(),
+          };
+          setHistory(prev => [newHistoryItem, ...prev]);
+        }
       }
     })
   }
@@ -288,3 +343,5 @@ export default function Translator() {
     </div>
   )
 }
+
+    
