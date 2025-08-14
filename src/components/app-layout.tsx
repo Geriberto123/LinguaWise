@@ -44,7 +44,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // Hide sidebar for auth pages
   const isAuthPage = ["/login", "/register", "/forgot-password"].includes(pathname);
 
-  if (loading && !isAuthPage) {
+  React.useEffect(() => {
+    if (!loading && !user && !isAuthPage) {
+      router.push('/login');
+    }
+  }, [loading, user, isAuthPage, router, pathname]);
+
+  if ((loading || !user) && !isAuthPage) {
     return (
        <div className="flex h-screen w-full items-center justify-center">
         <Languages className="h-10 w-10 animate-pulse text-primary" />
@@ -54,14 +60,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isAuthPage) {
     return <>{children}</>;
-  }
-
-  if (!user && !isAuthPage) {
-      // Redirect to login if not authenticated
-      if (typeof window !== 'undefined') {
-        router.push('/login');
-      }
-      return null;
   }
 
   return (
