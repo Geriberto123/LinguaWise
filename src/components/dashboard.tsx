@@ -115,7 +115,7 @@ export function Dashboard() {
   )
 }
 
-function useUserDocs<T>(collectionName: string, initialValue: T[]) {
+function useUserDocs<T extends { id?: string }>(collectionName: string, initialValue: T[]) {
     const { user } = useAuth();
     const [data, setData] = useState<T[]>(initialValue);
     const [loading, setLoading] = useState(true);
@@ -131,9 +131,11 @@ function useUserDocs<T>(collectionName: string, initialValue: T[]) {
             const q = query(collection(db, collectionName), where("userId", "==", user.uid));
             const querySnapshot = await getDocs(q);
             const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
+            
             if (collectionName === 'translationHistory') {
                  (docs as TranslationHistoryItem[]).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
             }
+
             setData(docs);
         } catch (error) {
             console.error(`Error fetching ${collectionName}:`, error);
@@ -141,7 +143,7 @@ function useUserDocs<T>(collectionName: string, initialValue: T[]) {
         } finally {
             setLoading(false);
         }
-    }, [user, collectionName]);
+    }, [user, collectionName, initialValue]);
 
     useEffect(() => {
         fetchData();
@@ -293,7 +295,7 @@ function HistoryTab() {
     };
     
     const handleDeleteItem = async (id: string) => {
-        if (!user) return;
+        if (!user || !id) return;
         try {
             await deleteDoc(doc(db, "translationHistory", id));
             await refetchHistory();
@@ -381,7 +383,7 @@ function HistoryTab() {
 }
 
 function DictionaryTab() {
-    const [dictionary, , loadingDictionary, refetchDictionary] = useUserDocs<DictionaryEntry>("dictionary", []);
+    const [dictionary, setDictionary, loadingDictionary, refetchDictionary] = useUserDocs<DictionaryEntry>("dictionary", []);
     const [searchTerm, setSearchTerm] = React.useState("");
     const { toast } = useToast();
     const { user } = useAuth();
@@ -389,11 +391,23 @@ function DictionaryTab() {
     const handleAddTerm = async (newTerm: Omit<DictionaryEntry, 'userId' | 'id'>) => {
         if (!user) return;
         try {
+            // Use a combination of userId and term to create a unique, predictable ID.
+            const docId = `${user.uid}_${newTerm.term.toLowerCase().replace(/\s+/g, '_')}`;
+            const docRef = doc(db, "dictionary", docId);
+
+            // Check if term already exists to prevent overwriting without explicit action
+            const docSnap = await getDoc(docRef);
+            if(docSnap.exists()){
+                toast({ title: "Term exists", description: `The term "${newTerm.term}" is already in your dictionary.`, variant: "destructive" });
+                return;
+            }
+
             const termWithUser: Omit<DictionaryEntry, 'id'> = { ...newTerm, userId: user.uid };
-            // Use term as document ID to prevent duplicates per user
-            const docRef = doc(db, "dictionary", `${user.uid}_${newTerm.term.toLowerCase()}`);
             await setDoc(docRef, termWithUser);
-            await refetchDictionary();
+
+            // Manually add the new term to the local state to avoid a full refetch
+            setDictionary(prev => [{...termWithUser, id: docId}, ...prev]);
+
             toast({ title: "Success", description: `Term "${newTerm.term}" has been added.` });
         } catch (error) {
             console.error("Error adding term:", error);
@@ -402,10 +416,11 @@ function DictionaryTab() {
     };
 
     const handleDeleteTerm = async (id: string) => {
-        if (!user) return;
+        if (!user || !id) return;
         try {
             await deleteDoc(doc(db, "dictionary", id));
-            await refetchDictionary();
+            // Manually remove from local state
+            setDictionary(prev => prev.filter(item => item.id !== id));
             toast({ title: "Success", description: `Term has been deleted.` });
         } catch (error) {
              console.error("Error deleting term:", error);
@@ -619,3 +634,5 @@ function SettingsTab() {
         </Card>
     )
 }
+
+    
