@@ -4,12 +4,12 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  "projectId": "linguawise-cj6fd",
+  "appId": "1:546211878588:web:783a1f962055273d6fa2b9",
+  "storageBucket": "linguawise-cj6fd.firebasestorage.app",
+  "apiKey": "AIzaSyD8XvjZM3RF0BzEGYB6A9xPm3O2T_qWXy8",
+  "authDomain": "linguawise-cj6fd.firebaseapp.com",
+  "messagingSenderId": "546211878588"
 };
 
 
