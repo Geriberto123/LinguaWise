@@ -116,41 +116,44 @@ export function Dashboard() {
   )
 }
 
-function useUserDocs<T extends { id?: string }>(collectionName: string, initialValue: T[]) {
-    const { user } = useAuth();
-    const [data, setData] = useState<T[]>(initialValue);
-    const [loading, setLoading] = useState(true);
+function useUserDocs<T extends { id?: string; userId?: string }>(
+  collectionName: string,
+  initialValue: T[]
+) {
+  const { user } = useAuth();
+  const [data, setData] = useState<T[]>(initialValue);
+  const [loading, setLoading] = useState(true);
 
-    const fetchData = useCallback(async () => {
-        if (!user) {
-            setData(initialValue);
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        try {
-            const q = query(collection(db, collectionName), where("userId", "==", user.uid));
-            const querySnapshot = await getDocs(q);
-            const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
-            
-            if (collectionName === 'translationHistory') {
-                 (docs as TranslationHistoryItem[]).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-            }
+  const fetchData = useCallback(async () => {
+    if (!user) {
+      setData([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const q = query(collection(db, collectionName), where("userId", "==", user.uid));
+      const querySnapshot = await getDocs(q);
+      const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
 
-            setData(docs);
-        } catch (error) {
-            console.error(`Error fetching ${collectionName}:`, error);
-            setData(initialValue);
-        } finally {
-            setLoading(false);
-        }
-    }, [user, collectionName, initialValue]);
+      if (collectionName === 'translationHistory' && docs.length > 0) {
+        (docs as TranslationHistoryItem[]).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      }
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-    
-    return { data, setData, loading, refetch: fetchData };
+      setData(docs);
+    } catch (error) {
+      console.error(`Error fetching ${collectionName}:`, error);
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, collectionName]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, setData, loading, refetch: fetchData };
 }
 
 
@@ -301,13 +304,15 @@ function HistoryTab() {
     
     const handleDeleteItem = async (id: string) => {
         if (!user || !id) return;
+        const originalHistory = [...history];
+        setHistory(prev => prev.filter(item => item.id !== id));
         try {
             await deleteDoc(doc(db, "translationHistory", id));
-            setHistory(prev => prev.filter(item => item.id !== id));
             toast({ title: "Success", description: "Translation entry has been deleted." });
         } catch (error) {
              console.error("Error deleting item:", error);
             toast({ title: "Error", description: "Failed to delete item.", variant: "destructive" });
+            setHistory(originalHistory);
         }
     };
 
@@ -358,7 +363,7 @@ function HistoryTab() {
                                 <TableCell className="font-medium max-w-xs truncate">{item.originalText}</TableCell>
                                 <TableCell className="max-w-xs truncate">{item.translatedText}</TableCell>
                                 <TableCell>
-                                    <Badge variant="outline">{mockLanguages.find(l => l.value === item.sourceLang)?.label}</Badge> → <Badge variant="outline">{mockLanguages.find(l => l.value === item.targetLang)?.label}</Badge>
+                                    <Badge variant="outline">{mockLanguages.find(l => l.value === item.sourceLang)?.label || item.sourceLang}</Badge> → <Badge variant="outline">{mockLanguages.find(l => l.value === item.targetLang)?.label || item.targetLang}</Badge>
                                 </TableCell>
                                 <TableCell className="hidden md:table-cell">{item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'N/A'}</TableCell>
                                 <TableCell>
@@ -411,13 +416,15 @@ function DictionaryTab() {
 
     const handleDeleteTerm = async (id: string) => {
         if (!user || !id) return;
+        const originalDictionary = [...dictionary];
+        setDictionary(prev => prev.filter(item => item.id !== id));
         try {
             await deleteDoc(doc(db, "dictionary", id));
-            setDictionary(prev => prev.filter(item => item.id !== id));
             toast({ title: "Success", description: `Term has been deleted.` });
         } catch (error) {
              console.error("Error deleting term:", error);
             toast({ title: "Error", description: "Failed to delete term.", variant: "destructive" });
+            setDictionary(originalDictionary);
         }
     }
 
@@ -629,3 +636,5 @@ function SettingsTab() {
         </Card>
     )
 }
+
+    
