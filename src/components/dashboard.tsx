@@ -11,6 +11,7 @@ import {
   BarChart,
   Pencil,
   Trash2,
+  Heart,
 } from "lucide-react"
 import { useSearchParams } from 'next/navigation'
 
@@ -61,7 +62,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { AddTermDialog } from "./add-term-dialog"
 import { ClearHistoryDialog } from "./clear-history-dialog"
-import type { TranslationHistoryItem, DictionaryEntry, UserSettings } from "@/lib/types";
+import type { TranslationHistoryItem, DictionaryEntry, UserSettings, Favorite } from "@/lib/types";
 import { useAuth } from "@/hooks/use-auth"
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, writeBatch, deleteDoc, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -96,6 +97,7 @@ export function Dashboard() {
         <TabsList>
           <TabsTrigger value="statistics"><BarChart className="mr-2 h-4 w-4" />Statistics</TabsTrigger>
           <TabsTrigger value="history"><History className="mr-2 h-4 w-4" />History</TabsTrigger>
+          <TabsTrigger value="favorites"><Heart className="mr-2 h-4 w-4" />Favorites</TabsTrigger>
           <TabsTrigger value="dictionary"><BookMarked className="mr-2 h-4 w-4" />Dictionary</TabsTrigger>
           <TabsTrigger value="settings"><Settings className="mr-2 h-4 w-4" />Settings</TabsTrigger>
         </TabsList>
@@ -105,6 +107,9 @@ export function Dashboard() {
       </TabsContent>
       <TabsContent value="history">
         <HistoryTab />
+      </TabsContent>
+       <TabsContent value="favorites">
+        <FavoritesTab />
       </TabsContent>
       <TabsContent value="dictionary">
         <DictionaryTab />
@@ -139,6 +144,11 @@ function useUserDocs<T extends { id?: string; userId?: string }>(
       if (collectionName === 'translationHistory' && docs.length > 0) {
         (docs as TranslationHistoryItem[]).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
+      
+      if (collectionName === 'favorites' && docs.length > 0) {
+        (docs as Favorite[]).sort((a, b) => new Date(b.favoritedAt).getTime() - new Date(a.favoritedAt).getTime());
+      }
+
 
       setData(docs);
     } catch (error) {
@@ -160,6 +170,7 @@ function useUserDocs<T extends { id?: string; userId?: string }>(
 function StatisticsTab() {
   const { data: history, loading: loadingHistory } = useUserDocs<TranslationHistoryItem>("translationHistory", []);
   const { data: dictionary, loading: loadingDictionary } = useUserDocs<DictionaryEntry>("dictionary", []);
+  const { data: favorites, loading: loadingFavorites } = useUserDocs<Favorite>("favorites", []);
   
   const stats = useMemo(() => {
     const wordsTranslated = history.reduce((acc, item) => acc + (item.originalText?.split(' ').length || 0), 0);
@@ -193,7 +204,7 @@ function StatisticsTab() {
     return { wordsTranslated, favoriteLanguageLabel, langData, usageData };
   }, [history]);
   
-  if (loadingHistory || loadingDictionary) return <div>Loading statistics...</div>
+  if (loadingHistory || loadingDictionary || loadingFavorites) return <div>Loading statistics...</div>
 
   return (
     <Card>
@@ -227,12 +238,12 @@ function StatisticsTab() {
             </Card>
              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Favorite Language</CardTitle>
-                    <History className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-medium">Saved Favorites</CardTitle>
+                    <Heart className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{stats.favoriteLanguageLabel}</div>
-                    <p className="text-xs text-muted-foreground">Most frequently used</p>
+                    <div className="text-2xl font-bold">{favorites.length}</div>
+                    <p className="text-xs text-muted-foreground">Favorite translations saved</p>
                 </CardContent>
             </Card>
              <Card>
@@ -394,6 +405,105 @@ function HistoryTab() {
         </Card>
     )
 }
+
+function FavoritesTab() {
+    const { data: favorites, setData: setFavorites, loading: loadingFavorites } = useUserDocs<Favorite>("favorites", []);
+    const [searchTerm, setSearchTerm] = React.useState("");
+    const { toast } = useToast();
+    const { user } = useAuth();
+
+    const handleDeleteItem = async (id: string) => {
+        if (!user || !id) return;
+        const originalFavorites = [...favorites];
+        setFavorites(prev => prev.filter(item => item.id !== id));
+        try {
+            await deleteDoc(doc(db, "favorites", id));
+            toast({ title: "Success", description: "Favorite has been removed." });
+        } catch (error) {
+             console.error("Error removing favorite:", error);
+            toast({ title: "Error", description: "Failed to remove favorite.", variant: "destructive" });
+            setFavorites(originalFavorites);
+        }
+    };
+
+    const filteredFavorites = favorites.filter(item =>
+        item.originalText?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.translatedText?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Favorite Translations</CardTitle>
+                <CardDescription>
+                    Review and manage your saved translations.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex items-center justify-between gap-4 mb-4">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search favorites..."
+                            className="pl-10"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                </div>
+                <Table>
+                    <TableHeader>
+                    <TableRow>
+                        <TableHead>Original Text</TableHead>
+                        <TableHead>Translated Text</TableHead>
+                        <TableHead>Languages</TableHead>
+                        <TableHead className="hidden md:table-cell">Date Saved</TableHead>
+                        <TableHead>
+                        <span className="sr-only">Actions</span>
+                        </TableHead>
+                    </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                     {loadingFavorites ? (
+                        <TableRow><TableCell colSpan={5} className="text-center">Loading favorites...</TableCell></TableRow>
+                     ) : filteredFavorites.length > 0 ? (
+                        filteredFavorites.map((item) => (
+                            <TableRow key={item.id}>
+                                <TableCell className="font-medium max-w-xs truncate">{item.originalText}</TableCell>
+                                <TableCell className="max-w-xs truncate">{item.translatedText}</TableCell>
+                                <TableCell>
+                                    <Badge variant="outline">{mockLanguages.find(l => l.value === item.sourceLang)?.label || item.sourceLang}</Badge> → <Badge variant="outline">{mockLanguages.find(l => l.value === item.targetLang)?.label || item.targetLang}</Badge>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell">{item.favoritedAt ? new Date(item.favoritedAt).toLocaleDateString() : 'N/A'}</TableCell>
+                                <TableCell>
+                                    <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button aria-haspopup="true" size="icon" variant="ghost">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                        <span className="sr-only">Toggle menu</span>
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                        <DropdownMenuItem onClick={() => item.id && handleDeleteItem(item.id)} className="text-destructive">
+                                          <Trash2 className="mr-2 h-4 w-4" />
+                                          Remove
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </TableCell>
+                            </TableRow>
+                        ))
+                     ) : (
+                        <TableRow><TableCell colSpan={5} className="text-center">No favorites found.</TableCell></TableRow>
+                     )}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    )
+}
+
 
 function DictionaryTab() {
     const { data: dictionary, setData: setDictionary, loading: loadingDictionary, refetch: refetchDictionary } = useUserDocs<DictionaryEntry>("dictionary", []);

@@ -30,3 +30,8 @@ export interface UserSettings {
     defaultTone: string;
     saveHistory: boolean;
 }
+
+export interface Favorite extends Omit<TranslationHistoryItem, 'id' | 'timestamp'> {
+    id?: string;
+    favoritedAt: string;
+}

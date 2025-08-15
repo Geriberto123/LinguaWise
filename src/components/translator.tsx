@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/accordion"
 import { useToast } from "@/hooks/use-toast"
 import { translateTextAction } from "@/lib/actions"
-import type { TranslationResult, TranslationHistoryItem } from "@/lib/types"
+import type { TranslationResult, TranslationHistoryItem, Favorite } from "@/lib/types"
 import { useAuth } from "@/hooks/use-auth"
 import { doc, getDoc, addDoc, collection } from "firebase/firestore"
 import { db } from "@/lib/firebase"
@@ -62,6 +62,7 @@ export default function Translator() {
 
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<TranslationResult | null>(null)
+  const [lastTranslation, setLastTranslation] = useState<TranslationHistoryItem | null>(null);
   const [copied, setCopied] = useState(false)
   const { toast } = useToast()
   const { user } = useAuth();
@@ -103,6 +104,7 @@ export default function Translator() {
   const handleClearText = () => {
     setInputText("")
     setResult(null)
+    setLastTranslation(null)
   }
 
   const handleCopyToClipboard = () => {
@@ -118,6 +120,7 @@ export default function Translator() {
     if (!inputText.trim() || !user) return
 
     startTransition(async () => {
+      setLastTranslation(null);
       const formData = new FormData()
       formData.append("originalText", inputText)
       formData.append("sourceLang", sourceLang)
@@ -133,8 +136,8 @@ export default function Translator() {
         })
       } else {
         setResult(response.data);
-        if (saveHistory && response.data) {
-          const newHistoryItem: Omit<TranslationHistoryItem, 'id'> = {
+        if (response.data) {
+           const newHistoryItem: TranslationHistoryItem = {
             userId: user.uid,
             originalText: inputText,
             translatedText: response.data.translatedText,
@@ -143,16 +146,53 @@ export default function Translator() {
             tone,
             timestamp: new Date().toISOString(),
           };
-          try {
-            await addDoc(collection(db, "translationHistory"), newHistoryItem);
-          } catch(e) {
-            console.error("Error adding document: ", e);
-            toast({ title: "Error", description: "Could not save translation to history.", variant: "destructive" });
+          setLastTranslation(newHistoryItem);
+          if (saveHistory) {
+            try {
+              // We don't need to store the doc id here, just save it
+              await addDoc(collection(db, "translationHistory"), newHistoryItem);
+            } catch(e) {
+              console.error("Error adding document: ", e);
+              toast({ title: "Error", description: "Could not save translation to history.", variant: "destructive" });
+            }
           }
         }
       }
     })
   }
+
+  const handleFeedback = (feedbackType: 'good' | 'bad') => {
+    toast({
+      title: "Feedback Received",
+      description: `Thank you for your ${feedbackType} feedback!`,
+    });
+    // Here you would typically send this feedback to your backend/analytics
+  };
+  
+  const handleSaveToFavorites = async () => {
+    if (!lastTranslation || !user) return;
+    
+    const favoriteItem: Omit<Favorite, 'id'> = {
+        userId: user.uid,
+        originalText: lastTranslation.originalText,
+        translatedText: lastTranslation.translatedText,
+        sourceLang: lastTranslation.sourceLang,
+        targetLang: lastTranslation.targetLang,
+        tone: lastTranslation.tone,
+        favoritedAt: new Date().toISOString(),
+    };
+
+    try {
+        await addDoc(collection(db, "favorites"), favoriteItem);
+        toast({
+            title: "Added to Favorites",
+            description: "You can view your favorites on the dashboard.",
+        });
+    } catch (error) {
+        console.error("Error saving to favorites: ", error);
+        toast({ title: "Error", description: "Could not save to favorites.", variant: "destructive" });
+    }
+  };
   
   const charCount = inputText.length;
 
@@ -324,16 +364,16 @@ export default function Translator() {
 
               <div className="flex items-center justify-between pt-4">
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => handleFeedback('good')}>
                     <ThumbsUp className="mr-2 h-4 w-4" />
                     Good
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => handleFeedback('bad')}>
                     <ThumbsDown className="mr-2 h-4 w-4" />
                     Bad
                   </Button>
                 </div>
-                <Button variant="secondary" size="sm">
+                <Button variant="secondary" size="sm" onClick={handleSaveToFavorites} disabled={!lastTranslation}>
                   <Heart className="mr-2 h-4 w-4" />
                   Save to Favorites
                 </Button>
