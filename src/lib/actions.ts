@@ -2,10 +2,11 @@
 
 import { smartTranslate, SmartTranslateInput } from "@/ai/flows/smart-translate";
 import { getTranslationSuggestions, TranslationSuggestionsInput } from "@/ai/flows/translation-suggestions";
+import { textToSpeech, TextToSpeechInput, TextToSpeechOutput } from "@/ai/flows/text-to-speech";
 import { z } from "zod";
 import type { TranslationResult } from "./types";
 
-const formSchema = z.object({
+const translateFormSchema = z.object({
   originalText: z.string().min(1, "Text is required."),
   sourceLang: z.string(),
   targetLang: z.string(),
@@ -14,7 +15,7 @@ const formSchema = z.object({
 
 export async function translateTextAction(formData: FormData): Promise<{data: TranslationResult | null, error: string | null}> {
   const rawFormData = Object.fromEntries(formData.entries());
-  const validatedFields = formSchema.safeParse(rawFormData);
+  const validatedFields = translateFormSchema.safeParse(rawFormData);
   
   if (!validatedFields.success) {
     return { data: null, error: "Invalid input data." };
@@ -38,9 +39,6 @@ export async function translateTextAction(formData: FormData): Promise<{data: Tr
       tone
     };
     
-    // For demonstration, we'll call AI flows and return mock data structure.
-    // In a real scenario, you would await the results from the AI flows.
-    
     const [translationResult, suggestionsResult] = await Promise.all([
       smartTranslate(translationInput),
       getTranslationSuggestions(suggestionsInput)
@@ -63,4 +61,18 @@ export async function translateTextAction(formData: FormData): Promise<{data: Tr
     console.error("Translation action failed:", error);
     return { data: null, error: "An unexpected error occurred during translation." };
   }
+}
+
+export async function textToSpeechAction(text: string): Promise<{data: TextToSpeechOutput | null, error: string | null}> {
+    if (!text) {
+        return { data: null, error: "No text provided for speech synthesis." };
+    }
+    
+    try {
+        const result = await textToSpeech(text);
+        return { data: result, error: null };
+    } catch (error) {
+        console.error("Text-to-speech action failed:", error);
+        return { data: null, error: "An unexpected error occurred during speech synthesis." };
+    }
 }

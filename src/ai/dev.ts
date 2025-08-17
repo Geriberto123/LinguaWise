@@ -4,3 +4,4 @@ config();
 import '@/ai/flows/translation-suggestions.ts';
 import '@/ai/flows/smart-translate.ts';
 import '@/ai/flows/grammar-check.ts';
+import '@/ai/flows/text-to-speech.ts';
