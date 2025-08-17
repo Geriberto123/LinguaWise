@@ -9,8 +9,7 @@ import {
     signInWithEmailAndPassword,
     signOut as firebaseSignOut,
     GoogleAuthProvider,
-    signInWithRedirect,
-    getRedirectResult,
+    signInWithPopup,
     updateProfile,
     sendPasswordResetEmail
 } from 'firebase/auth';
@@ -40,33 +39,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
-    // Handle redirect result
-    getRedirectResult(auth)
-      .then(async (result) => {
-        if (result && result.user) {
-          // This is the signed-in user
-          const user = result.user;
-          // Check if it's a new user and create settings doc if so
-          const settingsRef = doc(db, "userSettings", user.uid);
-          const docSnap = await getDoc(settingsRef);
-
-          if (!docSnap.exists()) {
-            await setDoc(settingsRef, {
-              nativeLanguage: "en",
-              defaultTargetLanguage: "es",
-              defaultTone: "formal",
-              saveHistory: true,
-            });
-          }
-        }
-      }).catch((error) => {
-        // Handle Errors here.
-        console.error("Error getting redirect result:", error);
-      }).finally(() => {
-        setLoading(false);
-      });
-
-
     return () => unsubscribe();
   }, []);
 
@@ -94,8 +66,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    // Use signInWithRedirect instead of signInWithPopup
-    await signInWithRedirect(auth, provider);
+    const result = await signInWithPopup(auth, provider);
+    
+    if (result && result.user) {
+      const user = result.user;
+      const settingsRef = doc(db, "userSettings", user.uid);
+      const docSnap = await getDoc(settingsRef);
+
+      if (!docSnap.exists()) {
+        await setDoc(settingsRef, {
+          nativeLanguage: "en",
+          defaultTargetLanguage: "es",
+          defaultTone: "formal",
+          saveHistory: true,
+        });
+      }
+    }
+    return result;
   };
   
   const signOut = () => {
